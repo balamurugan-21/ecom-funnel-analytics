@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+data/demo.db          # regenerated automatically on first app run
+# data/funnel.db is INTENTIONALLY committable — ship your sampled DB (<90MB)
