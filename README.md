@@ -1,76 +1,93 @@
 # E-commerce Conversion Funnel Analytics
 
-A Streamlit dashboard that answers one business question with equal weight on SQL and Python:
+**🔗 Live demo:** https://ecom-funnel-analytics.streamlit.app/
+**💻 Source:** https://github.com/balamurugan-21/ecom-funnel-analytics
 
-> **Where do shoppers drop out of the view → cart → purchase funnel, which segment differences are statistically real, and how much of the cart is being abandoned — and can we trust these numbers?**
+An interactive dashboard that traces how online shoppers move through the **view → add-to-cart → purchase** funnel, quantifies where they drop off, and tests which differences between segments are statistically real versus random noise. Built on ~400K real clickstream events, with a deliberate split: **SQL does every aggregation, Python does every statistical test.**
 
-Built on the Kaggle [eCommerce behavior data from multi category store](https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store) clickstream dataset (one row per view/cart/purchase event).
+---
+
+## The business question
+
+> Where do shoppers fall out of the purchase funnel, which segment differences (by product category and price) are real rather than noise, how much revenue is lost to cart abandonment — and can we trust these numbers enough to act on them?
+
+Every view in the dashboard answers a piece of this, and every number is traceable to the exact SQL query that produced it (shown in an expander on each tab).
+
+## Why I built it
+
+I wanted a project that shows both halves of a data role honestly: writing real SQL against a warehouse-style database (window functions, sessionization, funnel logic) **and** applying proper statistical inference on top of it (confidence intervals, hypothesis tests, multiple-comparison corrections) rather than eyeballing bar charts. So I drew a hard line down the middle of the architecture and kept each language doing what it's best at.
 
 ## Architecture: SQL aggregates, Python infers
 
-The core design rule of this project is a hard boundary:
+The core design rule is a strict boundary:
 
-- **SQLite (`queries.sql`) does ALL extraction and aggregation.** Every count, rate denominator and bucket on screen comes from a named query in `queries.sql`: the per-user and per-session funnels, the category split (parsed with `substr`/`instr`), price quartiles via `NTILE(4)`, session durations via `MIN`/`MAX`, inter-event gaps via `LAG()`, time-to-convert bucketing, abandonment, and the data-quality audit. Each query carries a plain-English comment, and the app shows the exact SQL in an expander on every view.
-- **Python (`app.py`) does ALL statistics and UI.** pandas only ever receives small query *result sets* — it never aggregates raw events. Python contributes Wilson confidence intervals on every funnel step, an omnibus chi-square test across segments, per-segment two-proportion z-tests with a Bonferroni multiple-comparisons correction, and a plain-English verdict on which differences are real vs noise.
+- **SQLite (`queries.sql`) does ALL extraction and aggregation.** Every count, rate, and bucket on screen comes from a named, plain-English-commented query: the per-user and per-session funnels, the category split (parsed from `category_code` with `substr`/`instr`), price quartiles via the `NTILE(4)` window function, session durations via `MIN`/`MAX`, inter-event gaps via `LAG()`, time-to-convert bucketing, cart abandonment, and a data-quality audit.
+- **Python (`app.py`) does ALL statistics and UI.** pandas only ever receives small query *result sets* — it never aggregates raw events. Python adds Wilson confidence intervals on every funnel step, an omnibus chi-square test across segments, per-segment two-proportion z-tests with a Bonferroni multiple-comparisons correction, and a plain-English verdict on which differences are real.
 
-Why this split? It mirrors production analytics: the warehouse does the heavy row-crunching once (cheap, indexed, reviewable SQL), and the application layer receives kilobytes, not gigabytes, and adds the judgment — inference, uncertainty, and presentation. It also makes both skills independently auditable: you can run every query in any SQLite client, and every statistical function is a small commented pure function.
+Why this split? It mirrors how production analytics actually works: the database does the heavy row-crunching once (cheap, indexed, reviewable SQL), and the application layer receives kilobytes instead of gigabytes and adds the judgment — inference, uncertainty, and presentation. It also makes both skills independently auditable — you can run every query in any SQLite client, and every statistical function is a small, commented, pure function.
 
-## Sampling strategy: by user, never by row
+## The data & sampling strategy
 
-The raw monthly files are several GB, so `load_data.py` streams the CSV in 500k-row chunks and keeps a random ~1–2M-event sample. Critically, it samples **users**, not rows:
+Source: Kaggle's [eCommerce behavior data from multi category store](https://www.kaggle.com/datasets/mkechinov/ecommerce-behavior-data-from-multi-category-store) — one row per event (`view` / `cart` / `purchase`), with product, category, brand, price, user, and session fields.
 
-- **Row sampling breaks funnels.** A journey is view → cart → purchase spread over many rows. Keeping every Nth row keeps the view but drops the purchase for most users, biasing every conversion rate downward in stage-dependent ways.
-- **User sampling preserves funnels.** Keep a random subset of users but *all* of each kept user's events, and every retained journey is complete. Per-user conversion rates on the sample are unbiased estimates of the full-population rates, because it is literally a simple random sample of users. Sessions survive too, since a session belongs to one user.
-- **Consistency across chunks** comes from a deterministic hash: a user is kept iff `md5(user_id) mod 10000 < k`. The same user hashes the same way in every chunk and every run, so no giant in-memory user set is needed.
+The raw monthly file is **9 GB** — far too big to query interactively or ship in a repo. So `load_data.py` streams it in chunks and keeps a random ~400K-event sample. The critical decision is that it **samples by user, never by row:**
 
-## Headline findings (demo dataset)
+- **Row sampling breaks funnels.** A journey is view → cart → purchase spread across many rows. Keeping every Nth row keeps the view but drops the purchase for most users, biasing every conversion rate downward in stage-dependent ways.
+- **User sampling preserves funnels.** Keep a random subset of users but *all* of each kept user's events, and every retained journey is complete. Per-user conversion rates on the sample are unbiased estimates of the full-population rates, because it's literally a simple random sample of users. Sessions survive too, since each session belongs to one user.
+- **Consistency across chunks** comes from a deterministic hash: a user is kept iff `md5(user_id) mod 10000 < k`. The same user hashes the same way in every chunk and every run, so no giant in-memory user set is needed while streaming.
 
-The repo ships with a small synthetic demo dataset (generated on first run) so the app renders immediately. On it — and directionally on the real data — the dashboard surfaces the classic patterns:
+The final sampled SQLite database is ~74 MB — small enough to commit to the repo so the deployed app shows real data.
 
-- Per-session conversion is far below per-user conversion, because a large share of buyers return in a later session (visible in the Timing tab's "later return" slice).
-- Cheaper price quartiles convert meaningfully better than the most expensive quartile at the cart → purchase step, and the difference survives Bonferroni correction; several category gaps do not, and the app says so explicitly.
-- Cart abandonment sits in the 40–70% range depending on category, and a handful of high-cart, low-purchase products account for a disproportionate share of abandoned carts.
+## Headline findings
 
-Re-run the app on real data and replace this section with your actual numbers — the Segments tab's verdict panel writes the sentences for you.
+On the November 2019 sample (**403,325 events · 22,083 users · 82,795 sessions**):
+
+- **The funnel is steep and front-loaded.** Of users who viewed a product, **22.6%** added to cart (95% CI 22.0–23.1%), and of those, **47.8%** went on to purchase (95% CI 46.4–49.1%). End-to-end, only **10.8%** of viewers became buyers — the biggest single drop-off is at the view→cart step, not at checkout.
+- **Per-session conversion runs well below per-user conversion**, because a meaningful share of buyers return in a later session to complete the purchase (visible in the Timing tab's "later return" split). Per-user answers "do we eventually convert people?"; per-session answers "how good is a single visit at closing?"
+- **Cart abandonment** overall sits at `<FILL IN from your Abandonment tab>%`, and varies by category — `<FILL IN highest-abandonment category>` abandons most. A handful of high-cart, low-purchase products account for a disproportionate share (see the Abandonment tab).
+- **Segment differences, tested properly:** across product categories/price quartiles, the omnibus chi-square `<is / is not>` significant, and after Bonferroni correction the differences that survive as *real* are `<FILL IN which segments the Segments tab flags as significant>`. The rest are within the range expected from chance — the dashboard says so explicitly rather than over-claiming.
+
+> Replace the `<FILL IN ...>` notes above with the exact figures from your live app's Abandonment and Segments tabs — they're one click away and make the findings unmistakably your own.
 
 ## Limitations
 
-- **Sampling variance:** all rates carry the CIs shown; small categories are excluded below minimum-size thresholds rather than reported noisily.
-- **Observation window edges:** users who viewed near the end of the window haven't had time to purchase yet, deflating conversion slightly (right-censoring).
-- **Tracking gaps:** the data-quality panel quantifies purchases with no recorded view; true funnel rates are at least what's shown.
-- **NULL categories:** category-level results describe the *labelled* subset (~30% of events lack `category_code` in the real data).
-- **Bonferroni is conservative:** real differences in small segments may be marked "borderline"; that's the intended trade-off.
-- **No causality:** category/price differences are associations — product mix, seasonality and traffic source are all confounded.
+- **Sampling variance:** all rates carry the confidence intervals shown; small segments are excluded below minimum-size thresholds rather than reported noisily.
+- **Right-censoring:** users who viewed near the end of the observation window haven't had time to purchase yet, slightly deflating conversion.
+- **Tracking gaps:** the data-quality panel quantifies purchases with no recorded view; true funnel rates are *at least* what's shown.
+- **NULL categories:** category-level results describe the *labelled* subset only.
+- **Bonferroni is conservative:** real differences in small segments may be flagged "borderline" — an intentional trade-off favoring caution.
+- **No causality:** category/price differences are associations; product mix, seasonality, and traffic source are all confounded.
 
 ## Project layout
 
 ```
 ├── app.py            # Streamlit UI + all statistics (inference only)
-├── queries.sql       # ALL aggregation, one named + commented query per view
-├── load_data.py      # chunked CSV → SQLite loader, samples by user
+├── queries.sql       # ALL aggregation — one named, commented query per view
+├── load_data.py      # chunked 9 GB CSV → SQLite loader, samples by user
 ├── requirements.txt
-└── data/
-    ├── funnel.db     # produced by load_data.py (real sampled data)
-    └── demo.db       # auto-generated synthetic demo (first app run)
+├── data/
+│   └── funnel.db     # sampled real data (~74 MB, committed so the live app has data)
+└── README.md
 ```
 
 ## Run it locally
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py                 # runs on the built-in demo data
+streamlit run app.py                 # runs on the built-in synthetic demo data
 
-# with real data:
-# 1. download 2019-Nov.csv (or any month) from the Kaggle dataset page
-python load_data.py 2019-Nov.csv --target-events 1500000
+# to use real data:
+# 1. download a month (e.g. 2019-Nov.csv) from the Kaggle dataset page
+python load_data.py 2019-Nov.csv --target-events 400000
 streamlit run app.py                 # now uses data/funnel.db
 ```
 
-## Deploy to Streamlit Community Cloud (beginner steps)
+The app ships with a small synthetic dataset that generates on first run, so it renders immediately even before any real data is loaded.
 
-1. **Create a GitHub repo** and push this folder (`git init`, `git add .`, `git commit -m "funnel dashboard"`, create the repo on github.com, `git remote add origin …`, `git push -u origin main`).
-2. **Ship the sampled database inside the repo** so the deployed app shows real data. GitHub rejects files over 100 MB, and Streamlit Cloud clones your repo, so: run `load_data.py` with `--target-events` low enough that `data/funnel.db` stays under ~90 MB (≈1–2M events fits comfortably; the loader prints the final size and warns if you're close). Commit `data/funnel.db`. If you skip this, the app deploys fine on the demo data.
-3. Go to **share.streamlit.io**, sign in with GitHub, click **"Create app"**.
-4. Pick your repo, branch `main`, main file path `app.py`, and click **Deploy**.
-5. Streamlit Cloud installs `requirements.txt` automatically. First boot takes a couple of minutes; after that you get a public URL to put on your resume.
-6. To update, just `git push` — the app redeploys itself.
+## Deployment
+
+Deployed on Streamlit Community Cloud, which clones this repo and runs `app.py` directly. Because the sampled `data/funnel.db` is committed (kept under 100 MB by tuning `--target-events` in the loader), the live app shows real data with no external setup. Pushing to `main` auto-redeploys.
+
+## Tech stack
+
+Python · SQLite · pandas · SciPy · Plotly · Streamlit
