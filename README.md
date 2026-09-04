@@ -47,7 +47,7 @@ On the November 2019 sample (**403,325 events · 22,083 users · 82,795 sessions
 - **Cart abandonment** overall sits at `<FILL IN from your Abandonment tab>%`, and varies by category — `<FILL IN highest-abandonment category>` abandons most. A handful of high-cart, low-purchase products account for a disproportionate share (see the Abandonment tab).
 - **Segment differences, tested properly:** across product categories/price quartiles, the omnibus chi-square `<is / is not>` significant, and after Bonferroni correction the differences that survive as *real* are `<FILL IN which segments the Segments tab flags as significant>`. The rest are within the range expected from chance — the dashboard says so explicitly rather than over-claiming.
 
-> Replace the `<FILL IN ...>` notes above with the exact figures from your live app's Abandonment and Segments tabs — they're one click away and make the findings unmistakably your own.
+> Replace the `` notes above with the exact figures from your live app's Abandonment and Segments tabs — they're one click away and make the findings unmistakably your own.
 
 ## Limitations
 
