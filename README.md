@@ -44,17 +44,16 @@ On the November 2019 sample (**403,325 events · 22,083 users · 82,795 sessions
 
 - **The funnel is steep and front-loaded.** Of users who viewed a product, **22.6%** added to cart (95% CI 22.0–23.1%), and of those, **47.8%** went on to purchase (95% CI 46.4–49.1%). End-to-end, only **10.8%** of viewers became buyers — the biggest single drop-off is at the view→cart step, not at checkout.
 - **Per-session conversion runs well below per-user conversion**, because a meaningful share of buyers return in a later session to complete the purchase (visible in the Timing tab's "later return" split). Per-user answers "do we eventually convert people?"; per-session answers "how good is a single visit at closing?"
-- **Cart abandonment** overall sits at `<FILL IN from your Abandonment tab>%`, and varies by category — `<FILL IN highest-abandonment category>` abandons most. A handful of high-cart, low-purchase products account for a disproportionate share (see the Abandonment tab).
-- **Segment differences, tested properly:** across product categories/price quartiles, the omnibus chi-square `<is / is not>` significant, and after Bonferroni correction the differences that survive as *real* are `<FILL IN which segments the Segments tab flags as significant>`. The rest are within the range expected from chance — the dashboard says so explicitly rather than over-claiming.
+- **Cart abandonment is the biggest single leak.** 52.3% of users who added to cart never purchased (2,603 of 4,981; 95% CI 50.9–53.6%), rising to 62.3% per session. It varies sharply by category: apparel abandons worst at 69.4%, then furniture (65.2%) and computers (64.8%), against 51.7% for electronics — the largest category by volume. A handful of high-cart, low-purchase products account for a disproportionate share (see the Abandonment tab).
+- **Segment differences, tested properly: category matters enormously, price barely matters at all.** Across product categories the omnibus chi-square is overwhelming (χ² = 926.3, p ≈ 1e-193) and *all ten* categories survive Bonferroni correction — electronics converts view→cart at 22.6% against apparel's 5.1%, a four-fold spread that is a business difference and not merely a small p-value. Across price quartiles the same test is only marginal (χ² = 10.5, p = 0.015): just the third quartile ($167–370, 15.4%) survives correction, the fourth is borderline, and the bottom two show no evidence of a real difference. What people shop for predicts cart-adds; what it costs mostly doesn't.
 
-> Replace the `<FILL IN ...>` notes above with the exact figures from your live app's Abandonment and Segments tabs — they're one click away and make the findings unmistakably your own.
 
 ## Limitations
 
 - **Sampling variance:** all rates carry the confidence intervals shown; small segments are excluded below minimum-size thresholds rather than reported noisily.
 - **Right-censoring:** users who viewed near the end of the observation window haven't had time to purchase yet, slightly deflating conversion.
 - **Tracking gaps:** the data-quality panel quantifies purchases with no recorded view; true funnel rates are *at least* what's shown.
-- **NULL categories:** category-level results describe the *labelled* subset only.
+- **NULL categories:** 11,726 of 22,081 viewers (53%) carry no `category_code`, so category-level results describe the labelled minority only. The `(unknown)` bucket is reported alongside the named categories rather than hidden.
 - **Bonferroni is conservative:** real differences in small segments may be flagged "borderline" — an intentional trade-off favoring caution.
 - **No causality:** category/price differences are associations; product mix, seasonality, and traffic source are all confounded.
 
